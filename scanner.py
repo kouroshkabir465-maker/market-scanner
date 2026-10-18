@@ -13,11 +13,11 @@ CHAT_ID = os.environ.get("SCANNER_TELEGRAM_CHAT_ID", "8561650547")
 TOKEN = os.environ.get("SCANNER_TELEGRAM_BOT_TOKEN", "")
 STATE, TRADES, CALLS = [os.path.join(HERE, f) for f in ("state.json", "trades.json", "td_calls.json")]
 # name, twelve data symbol (None = yfinance only), yfinance symbol, decimals, enabled
-# WTI disabled: backtest negative (PF 0.85, -9.5R / 120 trades); WTI not on Twelve Data free tier
+# BTC disabled: ~break-even after costs. WTI disabled: backtest negative (PF 0.85, -9.5R / 120 trades); WTI not on Twelve Data free tier
 SYMBOLS = {
-    "EURUSD": dict(fa="یورو/دلار", td="EUR/USD", yf="EURUSD=X", dec=5, on=True),
+    "EURUSD": dict(fa="یورو/دلار", td="EUR/USD", yf="EURUSD=X", dec=5, on=True, fx=True),
     "WTI":    dict(fa="نفت WTI", td=None, yf="CL=F", dec=2, on=False),
-    "BTCUSD": dict(fa="بیت‌کوین", td="BTC/USD", yf="BTC-USD", dec=1, on=True),
+    "BTCUSD": dict(fa="بیت‌کوین", td="BTC/USD", yf="BTC-USD", dec=1, on=False),
 }
 CROSS_LOOKBACK, SWING_BARS, ATR_BUF, MIN_ATR, MAX_ATR = 3, 20, 0.5, 1.0, 4.0
 RSI_MAX_BUY, RSI_MIN_SELL, MIN_ATR_RATIO = 75, 25, 0.7
@@ -183,10 +183,15 @@ def track(name, d15, trades):
                 t.update(status="closed", R=1.5); say(f"🏆 سیگنال {nm}: <b>تارگت ۲ ({f(t['tp2'])}) خورد</b> (+1.5R در کل)."); break
             t["last_checked"] = str(ts)
 
+def fx_closed(now=None):
+    t = now or dt.datetime.now(dt.timezone.utc)
+    return t.weekday() == 5 or (t.weekday() == 6 and t.hour < 21) or (t.weekday() == 4 and t.hour >= 21)
+
 def watch():
     st, trades = load(STATE, {}), load(TRADES, [])
     for name, s in SYMBOLS.items():
         if not s["on"]: continue
+        if s.get("fx") and fx_closed(): print(f"{name}: forex weekend, skip"); continue
         try:
             a = analyze(name); track(name, a["d15"], trades)
             print(f"{name}: side={a['side']} dir4={a['dir4']} age={a['age']:.0f}s src={a['src']}")
@@ -195,6 +200,7 @@ def watch():
             if key == st.get(name): continue
             st[name] = key
             if not a["side"]: continue
+            if any(t["sym"] == name and t["status"] != "closed" for t in trades): print(f"{name}: signal skipped, trade still open"); continue
             p = os.path.join(HERE, f"chart_{name}.png"); plot(name, a["d4"], a["d15"], a["lv"], p)
             photo(p, f"چارت {s['fa']}: ۴ ساعته و ۱۵ دقیقه"); say(signal_msg(a))
             lv = a["lv"]; trades.append(dict(sym=name, side=a["side"], time=str(dt.datetime.now(TZ)), bar=str(a["d15"].index[-1]),
