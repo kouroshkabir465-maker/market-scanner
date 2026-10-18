@@ -58,9 +58,14 @@ def to_h4(h1):
     g.index = pd.DatetimeIndex(g.index).tz_convert("UTC"); g.index.name = None
     return g.sort_index()
 
+def _drop_weekend(d):
+    """Twelve Data returns synthetic flat FX bars on weekends; MT5 has none."""
+    return d if d is None or not len(d) else d[[not fx_closed(t.to_pydatetime()) for t in d.index]]
+
 def get_data(name):
     s = SYMBOLS[name]
-    h1, m15 = _td(s["td"], "1h", 1200), _td(s["td"], "15min", 600)
+    h1, m15 = _td(s["td"], "1h", 1200), _td(s["td"], "15min", 800)
+    if s.get("fx"): h1, m15 = _drop_weekend(h1), _drop_weekend(m15)
     if h1 is not None and m15 is not None and len(h1) > 600 and len(m15) > 300:
         return to_h4(h1), m15, "Twelve Data"
     return to_h4(_yf(s["yf"], "1h", "180d")), _yf(s["yf"], "15m", "30d"), "Yahoo (تأخیر ~۱۵ دقیقه)"
@@ -165,7 +170,7 @@ def analyze(name):
     side = dir4 if dir4 and dir15 == dir4 else 0
     age = (pd.Timestamp.now(tz="UTC") - d15.index[-1]).total_seconds()
     return dict(name=name, d4=d4, d15=d15, side=side, dir4=dir4, src=src, age=age,
-                lv=levels(d15, side) if side else None, key=f"{side}|{d15.cross_id.iloc[-1]}")
+                lv=levels(d15, side) if side else None, key=f"{side}|{d15.index[d15.cross_id == d15.cross_id.iloc[-1]][0]}")
 
 def signal_msg(a):
     s = SYMBOLS[a["name"]]; f = lambda v: f"{v:.{s['dec']}f}"; lv = a["lv"]; side = a["side"]
@@ -192,11 +197,12 @@ def track(name, d15, trades):
                 t["tp1_hit"] = True; say(f"✅ سیگنال {nm}: <b>تارگت ۱ ({f(t['tp1'])}) خورد</b>. نصف رو ببند و حد ضرر رو ببر روی ورود.")
             if t["tp1_hit"] and ((s > 0 and b.High >= t["tp2"]) or (s < 0 and b.Low <= t["tp2"])):
                 t.update(status="closed", R=1.5); say(f"🏆 سیگنال {nm}: <b>تارگت ۲ ({f(t['tp2'])}) خورد</b> (+1.5R در کل)."); break
-            t["last_checked"] = str(ts)
+            if ts + pd.Timedelta(minutes=15) <= pd.Timestamp.now(tz="UTC"): t["last_checked"] = str(ts)  # forming bar re-checked next run
 
 def fx_closed(now=None):
-    t = now or dt.datetime.now(dt.timezone.utc)
-    return t.weekday() == 5 or (t.weekday() == 6 and t.hour < 21) or (t.weekday() == 4 and t.hour >= 21)
+    """FX weekend: Fri 17:00 -> Sun 17:00 New York (DST-safe)."""
+    t = (now or dt.datetime.now(dt.timezone.utc)).astimezone(ZoneInfo("America/New_York"))
+    return t.weekday() == 5 or (t.weekday() == 4 and t.hour >= 17) or (t.weekday() == 6 and t.hour < 17)
 
 def watch():
     st, trades = load(STATE, {}), load(TRADES, [])

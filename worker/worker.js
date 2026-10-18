@@ -7,6 +7,13 @@ const KB = { keyboard: [[{ text: "🔍 بررسی کن" }]], resize_keyboard: tr
 const isCheck = t => /^\/check\b|بررسی|^🔍/.test(t.trim());
 
 export default {
+  // Cloudflare Cron Trigger: on-time dispatch (GitHub's own cron is often 10-30 min late or skipped; it stays as backup)
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(fetch("https://api.github.com/repos/kouroshkabir465-maker/market-scanner/actions/workflows/scanner.yml/dispatches", {
+      method: "POST", body: JSON.stringify({ ref: "main" }),
+      headers: { authorization: `Bearer ${env.GITHUB_TOKEN}`, accept: "application/vnd.github+json", "user-agent": "scanner-bot-worker", "content-type": "application/json" },
+    }).then(r => console.log("dispatch", r.status)));
+  },
   async fetch(req, env, ctx) {
     if (req.method !== "POST") return new Response("ok");
     if (req.headers.get("X-Telegram-Bot-Api-Secret-Token") !== env.WEBHOOK_SECRET)

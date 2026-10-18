@@ -1,13 +1,28 @@
 name: Keepalive
 on:
   schedule:
-    - cron: '0 6 1,15 * *'
+    - cron: '0 6 * * 1'
   workflow_dispatch:
 permissions:
   actions: write
+  contents: write
 jobs:
   k:
     runs-on: ubuntu-latest
     steps:
-      - run: gh api -X PUT repos/${{ github.repository }}/actions/workflows/scanner.yml/enable
+      - uses: actions/checkout@v4
+      - name: Re-enable workflows
         env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          for w in scanner.yml reply.yml chat_seen.yml keepalive.yml; do
+            gh api -X PUT "repos/${{ github.repository }}/actions/workflows/$w/enable" && echo "enabled $w"
+          done
+      - name: Commit to main if last commit is older than 30 days
+        run: |
+          age=$(( ( $(date +%s) - $(git log -1 --format=%ct) ) / 86400 ))
+          echo "last commit on main: $age days ago"
+          if [ "$age" -ge 30 ]; then
+            date -u +%FT%TZ > .github/keepalive.txt
+            git config user.name market-scanner; git config user.email market-scanner@users.noreply.github.com
+            git add .github/keepalive.txt; git commit -m "keepalive $(date -u +%F)"; git push
+          fi
