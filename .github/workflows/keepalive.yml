@@ -1,0 +1,13 @@
+name: Keepalive
+on:
+  schedule:
+    - cron: '0 6 1,15 * *'
+  workflow_dispatch:
+permissions:
+  actions: write
+jobs:
+  k:
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh api -X PUT repos/${{ github.repository }}/actions/workflows/scanner.yml/enable
+        env: { GH_TOKEN: "${{ github.token }}" }

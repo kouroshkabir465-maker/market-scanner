@@ -1,0 +1,5 @@
+__pycache__/
+*.png
+state.json
+trades.json
+td_calls.json
