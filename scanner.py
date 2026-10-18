@@ -138,7 +138,8 @@ def tg(method, **kw):
     if DRY: print(f"[dry] {method}: {kw.get('data', {}).get('text', kw.get('data', {}).get('caption', ''))}"); return
     j = requests.post(f"https://api.telegram.org/bot{TOKEN}/{method}", timeout=60, **kw).json()
     if not j.get("ok"): raise RuntimeError(f"Telegram {method} failed: {j.get('description')}")
-def say(t): tg("sendMessage", data={"chat_id": CHAT_ID, "text": t, "parse_mode": "HTML"})
+KB = json.dumps({"keyboard": [[{"text": "🔍 بررسی کن"}]], "resize_keyboard": True, "is_persistent": True})
+def say(t): tg("sendMessage", data={"chat_id": CHAT_ID, "text": t, "parse_mode": "HTML", "reply_markup": KB})
 def photo(p, cap):
     if DRY: print("[dry] photo", cap); return
     with open(p, "rb") as f: tg("sendPhoto", data={"chat_id": CHAT_ID, "caption": cap}, files={"photo": f})
@@ -218,6 +219,33 @@ def test():
     p = os.path.join(HERE, "chart_test.png"); plot(name, a["d4"], a["d15"], None, p)
     photo(p, f"چارت نمونه: {s['fa']}"); say("\n".join(lines)); print("TEST SENT")
 
+def reply(name="EURUSD"):
+    """On-demand check (Telegram button): current analysis + open trade status, works when market closed."""
+    s = SYMBOLS[name]; f = lambda v: f"{v:.{s['dec']}f}"
+    a = analyze(name); d4, d15 = a["d4"], a["d15"]; r4, r15 = d4.iloc[-1], d15.iloc[-1]
+    lean = a["dir4"] or int(r4.tk) or 1
+    last = d15.index[-1].tz_convert(TZ)
+    L = [f"🔍 <b>بررسی {s['fa']}</b> ({a['src']})", f"💰 قیمت: <b>{f(r15.Close)}</b>  (آخرین کندل: {last:%m-%d %H:%M} استانبول)"]
+    if (s.get("fx") and fx_closed()) or a["age"] > 3600:
+        L.append("🌙 بازار الان بسته‌ست؛ این تحلیل روی آخرین دادهٔ قبل از تعطیلیه.")
+    L += ["", f"<b>📊 روند ۴ ساعته:</b> {({1:'صعودی 📈',-1:'نزولی 📉',0:'خنثی ⏸'})[a['dir4']]}"]
+    L += [f"• {l} {'✅' if ok else '❌'}" for l, ok in checks(r4, "4h", lean)]
+    L += ["", f"<b>⏱ شرط‌های ورود ۱۵ دقیقه ({'خرید' if lean > 0 else 'فروش'}):</b>"]
+    L += [f"• {l} {'✅' if ok else '❌'}" for l, ok in checks(r15, "15m", lean)]
+    L.append(f"• RSI: {r15.rsi:.1f} | مووینگ ۹: {r15.rsi_ma:.1f}")
+    op = [t for t in load(TRADES, []) if t["sym"] == name and t["status"] != "closed"]
+    L.append("")
+    if op:
+        t = op[-1]; pnl = (r15.Close - t["entry"]) * t["side"]
+        L.append(f"📌 <b>معاملهٔ باز:</b> {'خرید' if t['side'] > 0 else 'فروش'} از {f(t['entry'])} | حد ضرر {f(t['entry'] if t['tp1_hit'] else t['sl'])} | "
+                 f"تارگت ۱ {f(t['tp1'])}{' ✅' if t['tp1_hit'] else ''} | تارگت ۲ {f(t['tp2'])}\n   الان {'در سود' if pnl > 0 else 'در ضرر'}: {pnl / abs(t['entry'] - t['sl']):+.2f}R")
+    else: L.append("📌 معاملهٔ بازی نداریم.")
+    if a["side"]: L.append(f"\n✅ <b>الان همهٔ شرط‌ها {'خرید' if a['side'] > 0 else 'فروش'} جوره</b> (سیگنال رسمی با ورود/حد ضرر از واچر میاد).")
+    elif a["dir4"]: L.append(f"\n⏳ روند ۴ ساعته تأیید شده؛ منتظر ۱۵ دقیقه‌ام.")
+    else: L.append("\n⏳ روند ۴ ساعته هنوز تأیید نشده؛ فعلاً صبر.")
+    p = os.path.join(HERE, "chart_reply.png"); plot(name, d4, d15, None, p)
+    photo(p, f"چارت {s['fa']}: ۴ ساعته و ۱۵ دقیقه"); say("\n".join(L)); print("REPLY SENT")
+
 # ---------- backtest ----------
 def backtest(name):
     s = SYMBOLS[name]
@@ -248,4 +276,5 @@ if __name__ == "__main__":
     if "--backtest" in sys.argv:
         for n in SYMBOLS: print(backtest(n))
     elif "--test" in sys.argv: test()
+    elif "--reply" in sys.argv: reply()
     else: watch()

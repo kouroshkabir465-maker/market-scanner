@@ -1,0 +1,25 @@
+name: Reply (check now)
+on:
+  repository_dispatch:
+    types: [tg_check]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TZ: Europe/Istanbul
+      SCANNER_TELEGRAM_BOT_TOKEN: ${{ secrets.SCANNER_TELEGRAM_BOT_TOKEN }}
+      SCANNER_TWELVEDATA_API_KEY: ${{ secrets.SCANNER_TWELVEDATA_API_KEY }}
+      SCANNER_TELEGRAM_CHAT_ID: ${{ secrets.SCANNER_TELEGRAM_CHAT_ID }}
+      MPLCONFIGDIR: /tmp/mpl
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12', cache: pip }
+      - run: pip install -q -r requirements.txt
+      - run: git fetch -q origin state && git show origin/state:trades.json > trades.json || true
+      - run: python scanner.py --reply
