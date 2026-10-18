@@ -1,6 +1,6 @@
 // Scanner bot Telegram webhook -> instant ack + repository_dispatch (reply.yml). Separate from gold bot.
 const OWNER = 8561650547;
-const EXTRA = [];                      // other allowed chats (user's second account)
+const EXTRA = [5728075440];                      // other allowed chats (user's second account)
 const CAPTURE_USER = "younesi1233";
 const REPO = "kouroshkabir465-maker/market-scanner";
 const KB = { keyboard: [[{ text: "🔍 بررسی کن" }]], resize_keyboard: true, is_persistent: true };
