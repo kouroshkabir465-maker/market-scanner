@@ -9,7 +9,8 @@ import mplfinance as mpf, matplotlib.pyplot as plt
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TZ, MT_TZ = ZoneInfo("Europe/Istanbul"), "Europe/Athens"
-CHAT_ID = os.environ.get("SCANNER_TELEGRAM_CHAT_ID", "8561650547")
+CHAT_IDS = [c.strip() for c in os.environ.get("SCANNER_TELEGRAM_CHAT_ID", "8561650547").split(",") if c.strip()]
+CHAT_ID = CHAT_IDS[0]
 TOKEN = os.environ.get("SCANNER_TELEGRAM_BOT_TOKEN", "")
 STATE, TRADES, CALLS = [os.path.join(HERE, f) for f in ("state.json", "trades.json", "td_calls.json")]
 # name, twelve data symbol (None = yfinance only), yfinance symbol, decimals, enabled
@@ -139,10 +140,19 @@ def tg(method, **kw):
     j = requests.post(f"https://api.telegram.org/bot{TOKEN}/{method}", timeout=60, **kw).json()
     if not j.get("ok"): raise RuntimeError(f"Telegram {method} failed: {j.get('description')}")
 KB = json.dumps({"keyboard": [[{"text": "🔍 بررسی کن"}]], "resize_keyboard": True, "is_persistent": True})
-def say(t): tg("sendMessage", data={"chat_id": CHAT_ID, "text": t, "parse_mode": "HTML", "reply_markup": KB})
+TARGETS = CHAT_IDS  # reply mode narrows this to the asking chat
+def _each(fn):
+    for i, c in enumerate(TARGETS):
+        try: fn(c)
+        except Exception as e:
+            if i == 0: raise
+            print(f"extra chat send failed: {e}")
+def say(t): _each(lambda c: tg("sendMessage", data={"chat_id": c, "text": t, "parse_mode": "HTML", "reply_markup": KB}))
 def photo(p, cap):
-    if DRY: print("[dry] photo", cap); return
-    with open(p, "rb") as f: tg("sendPhoto", data={"chat_id": CHAT_ID, "caption": cap}, files={"photo": f})
+    if DRY: print("[dry] photo", cap, TARGETS); return
+    def f(c):
+        with open(p, "rb") as fh: tg("sendPhoto", data={"chat_id": c, "caption": cap}, files={"photo": fh})
+    _each(f)
 
 def load(p, d): return json.load(open(p)) if os.path.exists(p) else d
 def save(p, v):
@@ -276,5 +286,8 @@ if __name__ == "__main__":
     if "--backtest" in sys.argv:
         for n in SYMBOLS: print(backtest(n))
     elif "--test" in sys.argv: test()
-    elif "--reply" in sys.argv: reply()
+    elif "--reply" in sys.argv:
+        ask = os.environ.get("TG_CHAT", "").strip()
+        TARGETS = [ask if ask in CHAT_IDS else CHAT_ID]
+        reply()
     else: watch()

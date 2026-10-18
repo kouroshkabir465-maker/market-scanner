@@ -1,0 +1,14 @@
+name: Chat seen (capture second account id)
+on:
+  repository_dispatch:
+    types: [chat_seen]
+permissions: {}
+jobs:
+  log:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "CHAT_SEEN bot=$BOT chat=$CHAT user=$USERNAME"
+        env:
+          BOT: ${{ github.event.client_payload.bot }}
+          CHAT: ${{ github.event.client_payload.chat }}
+          USERNAME: ${{ github.event.client_payload.username }}

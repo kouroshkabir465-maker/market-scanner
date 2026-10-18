@@ -15,6 +15,7 @@ jobs:
       SCANNER_TWELVEDATA_API_KEY: ${{ secrets.SCANNER_TWELVEDATA_API_KEY }}
       SCANNER_TELEGRAM_CHAT_ID: ${{ secrets.SCANNER_TELEGRAM_CHAT_ID }}
       MPLCONFIGDIR: /tmp/mpl
+      TG_CHAT: ${{ github.event.client_payload.chat }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
