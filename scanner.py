@@ -235,9 +235,10 @@ def reply(name="EURUSD"):
     a = analyze(name); d4, d15 = a["d4"], a["d15"]; r4, r15 = d4.iloc[-1], d15.iloc[-1]
     lean = a["dir4"] or int(r4.tk) or 1
     last = d15.index[-1].tz_convert(TZ)
-    L = [f"🔍 <b>بررسی {s['fa']}</b> ({a['src']})", f"💰 قیمت: <b>{f(r15.Close)}</b>  (آخرین کندل: {last:%m-%d %H:%M} استانبول)"]
+    L = []
     if (s.get("fx") and fx_closed()) or a["age"] > 3600:
-        L.append("🌙 بازار الان بسته‌ست؛ این تحلیل روی آخرین دادهٔ قبل از تعطیلیه.")
+        L += ["⛔ <b>بازار تعطیله، این تحلیل با آخرین قیمت جمعه‌ست</b>", ""]
+    L += [f"🔍 <b>بررسی {s['fa']}</b> ({a['src']})", f"💰 قیمت: <b>{f(r15.Close)}</b>  (آخرین کندل: {last:%m-%d %H:%M} استانبول)"]
     L += ["", f"<b>📊 روند ۴ ساعته:</b> {({1:'صعودی 📈',-1:'نزولی 📉',0:'خنثی ⏸'})[a['dir4']]}"]
     L += [f"• {l} {'✅' if ok else '❌'}" for l, ok in checks(r4, "4h", lean)]
     L += ["", f"<b>⏱ شرط‌های ورود ۱۵ دقیقه ({'خرید' if lean > 0 else 'فروش'}):</b>"]
