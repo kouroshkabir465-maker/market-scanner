@@ -175,7 +175,7 @@ def analyze(name):
 def signal_msg(a):
     s = SYMBOLS[a["name"]]; f = lambda v: f"{v:.{s['dec']}f}"; lv = a["lv"]; side = a["side"]
     lines = [f"📡 <b>اسکنر بازار — {s['fa']}</b> ({a['src']})",
-             ("🟢 <b>خرید (BUY)</b>" if side > 0 else "🔴 <b>فروش (SELL)</b>") + " — همهٔ شرط‌های ۴ ساعته و ۱۵ دقیقه تأیید شد.", ""]
+             ("\u200f🟢 <b>BUY</b>" if side > 0 else "\u200f🔴 <b>SELL</b>") + " — همهٔ شرط‌های ۴ ساعته و ۱۵ دقیقه تأیید شد.", ""]
     for tf, d, t in (("4h", a["d4"], "📊 ۴ ساعته"), ("15m", a["d15"], "⏱ ۱۵ دقیقه")):
         lines.append(f"<b>{t}</b>"); lines += [f"• {l} {'✅' if ok else '❌'}" for l, ok in checks(d.iloc[-1], tf, side)]
     lines += ["", f"🎯 <b>ورود:</b> {f(lv['entry'])}", f"🛑 <b>حد ضرر:</b> {f(lv['sl'])}",
@@ -187,7 +187,7 @@ def track(name, d15, trades):
     for t in trades:
         if t["sym"] != name or t["status"] == "closed": continue
         s = t["side"]; bars = d15[d15.index > pd.Timestamp(t.get("last_checked") or t["bar"])]
-        nm = f"{'خرید' if s > 0 else 'فروش'} {s0['fa']}"
+        nm = f"{'BUY' if s > 0 else 'SELL'} {s0['fa']}"
         for ts, b in bars.iterrows():
             stop = t["entry"] if t["tp1_hit"] else t["sl"]
             if (s > 0 and b.Low <= stop) or (s < 0 and b.High >= stop):
@@ -247,17 +247,17 @@ def reply(name="EURUSD"):
     L += [f"🔍 <b>بررسی {s['fa']}</b> ({a['src']})", f"💰 قیمت: <b>{f(r15.Close)}</b>  (آخرین کندل: {last:%m-%d %H:%M} استانبول)"]
     L += ["", f"<b>📊 روند ۴ ساعته:</b> {({1:'صعودی 📈',-1:'نزولی 📉',0:'خنثی ⏸'})[a['dir4']]}"]
     L += [f"• {l} {'✅' if ok else '❌'}" for l, ok in checks(r4, "4h", lean)]
-    L += ["", f"<b>⏱ شرط‌های ورود ۱۵ دقیقه ({'خرید' if lean > 0 else 'فروش'}):</b>"]
+    L += ["", f"<b>⏱ شرط‌های ورود ۱۵ دقیقه ({'BUY' if lean > 0 else 'SELL'}):</b>"]
     L += [f"• {l} {'✅' if ok else '❌'}" for l, ok in checks(r15, "15m", lean)]
     L.append(f"• RSI: {r15.rsi:.1f} | مووینگ ۹: {r15.rsi_ma:.1f}")
     op = [t for t in load(TRADES, []) if t["sym"] == name and t["status"] != "closed"]
     L.append("")
     if op:
         t = op[-1]; pnl = (r15.Close - t["entry"]) * t["side"]
-        L.append(f"📌 <b>معاملهٔ باز:</b> {'خرید' if t['side'] > 0 else 'فروش'} از {f(t['entry'])} | حد ضرر {f(t['entry'] if t['tp1_hit'] else t['sl'])} | "
+        L.append(f"📌 <b>معاملهٔ باز:</b> {'BUY' if t['side'] > 0 else 'SELL'} از {f(t['entry'])} | حد ضرر {f(t['entry'] if t['tp1_hit'] else t['sl'])} | "
                  f"تارگت ۱ {f(t['tp1'])}{' ✅' if t['tp1_hit'] else ''} | تارگت ۲ {f(t['tp2'])}\n   الان {'در سود' if pnl > 0 else 'در ضرر'}: {pnl / abs(t['entry'] - t['sl']):+.2f}R")
     else: L.append("📌 معاملهٔ بازی نداریم.")
-    if a["side"]: L.append(f"\n✅ <b>الان همهٔ شرط‌ها {'خرید' if a['side'] > 0 else 'فروش'} جوره</b> (سیگنال رسمی با ورود/حد ضرر از واچر میاد).")
+    if a["side"]: L.append(f"\n✅ <b>الان همهٔ شرط‌ها {'BUY' if a['side'] > 0 else 'SELL'} جوره</b> (سیگنال رسمی با ورود/حد ضرر از واچر میاد).")
     elif a["dir4"]: L.append(f"\n⏳ روند ۴ ساعته تأیید شده؛ منتظر ۱۵ دقیقه‌ام.")
     else: L.append("\n⏳ روند ۴ ساعته هنوز تأیید نشده؛ فعلاً صبر.")
     p = os.path.join(HERE, "chart_reply.png"); plot(name, d4, d15, None, p)
