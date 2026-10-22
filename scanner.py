@@ -164,12 +164,28 @@ def save(p, v):
     if not DRY: json.dump(v, open(p, "w"), ensure_ascii=False, indent=1, default=str)
 
 # ---------- live ----------
-def analyze(name):
-    h4, m15, src = get_data(name); d4, d15 = indicators(h4), indicators(m15)
+def h4_close(start):
+    """Close time (UTC) of a 4H bar starting at `start`: +4h on the broker (Athens) wall clock, so DST days are handled."""
+    loc = pd.Timestamp(start).tz_convert(MT_TZ)
+    return (loc.tz_localize(None) + pd.Timedelta(hours=4)).tz_localize(MT_TZ, ambiguous=False, nonexistent="shift_forward").tz_convert("UTC")
+
+def closed_only(h4, m15, now=None):
+    """Keep only CLOSED candles, matching backtest(): 15m bar t is closed at t+15m; the 4H bar used is the last one
+    closed by the start of that 15m bar (backtest merge_asof on 4H close time)."""
+    now = pd.Timestamp(now or pd.Timestamp.now(tz="UTC")).tz_convert("UTC")
+    m = m15[m15.index + pd.Timedelta(minutes=15) <= now]
+    t = m.index[-1] if len(m) else now
+    h = h4[[h4_close(i) <= t for i in h4.index]]
+    return h, m
+
+def analyze(name, now=None):
+    h4, m15, src = get_data(name); live = m15
+    h4, m15 = closed_only(h4, m15, now)
+    d4, d15 = indicators(h4), indicators(m15)
     dir4, dir15 = direction(d4.iloc[-1], "4h"), direction(d15.iloc[-1], "15m")
     side = dir4 if dir4 and dir15 == dir4 else 0
-    age = (pd.Timestamp.now(tz="UTC") - d15.index[-1]).total_seconds()
-    return dict(name=name, d4=d4, d15=d15, side=side, dir4=dir4, src=src, age=age,
+    age = (pd.Timestamp(now or pd.Timestamp.now(tz="UTC")) - d15.index[-1]).total_seconds()
+    return dict(name=name, d4=d4, d15=d15, live=live, side=side, dir4=dir4, src=src, age=age,
                 lv=levels(d15, side) if side else None, key=f"{side}|{d15.index[d15.cross_id == d15.cross_id.iloc[-1]][0]}")
 
 def signal_msg(a):
@@ -210,7 +226,7 @@ def watch():
         if not s["on"]: continue
         if s.get("fx") and fx_closed(): print(f"{name}: forex weekend, skip"); continue
         try:
-            a = analyze(name); track(name, a["d15"], trades)
+            a = analyze(name); track(name, a["live"], trades)
             print(f"{name}: side={a['side']} dir4={a['dir4']} age={a['age']:.0f}s src={a['src']}")
             if a["age"] > 3600: continue
             key = a["key"] if a["side"] else "none"
@@ -240,11 +256,11 @@ def reply(name="EURUSD"):
     s = SYMBOLS[name]; f = lambda v: f"{v:.{s['dec']}f}"
     a = analyze(name); d4, d15 = a["d4"], a["d15"]; r4, r15 = d4.iloc[-1], d15.iloc[-1]
     lean = a["dir4"] or int(r4.tk) or 1
-    last = d15.index[-1].tz_convert(TZ)
+    last = a["live"].index[-1].tz_convert(TZ)
     L = []
     if (s.get("fx") and fx_closed()) or a["age"] > 3600:
         L += ["⛔ <b>بازار تعطیله، این تحلیل با آخرین قیمت جمعه‌ست</b>", ""]
-    L += [f"🔍 <b>بررسی {s['fa']}</b> ({a['src']})", f"💰 قیمت: <b>{f(r15.Close)}</b>  (آخرین کندل: {last:%m-%d %H:%M} استانبول)"]
+    L += [f"🔍 <b>بررسی {s['fa']}</b> ({a['src']})", f"💰 قیمت: <b>{f(a['live'].Close.iloc[-1])}</b>  (آخرین کندل: {last:%m-%d %H:%M} استانبول)"]
     L += ["", f"<b>📊 روند ۴ ساعته:</b> {({1:'صعودی 📈',-1:'نزولی 📉',0:'خنثی ⏸'})[a['dir4']]}"]
     L += [f"• {l} {'✅' if ok else '❌'}" for l, ok in checks(r4, "4h", lean)]
     L += ["", f"<b>⏱ شرط‌های ورود ۱۵ دقیقه ({'BUY' if lean > 0 else 'SELL'}):</b>"]
@@ -253,9 +269,11 @@ def reply(name="EURUSD"):
     op = [t for t in load(TRADES, []) if t["sym"] == name and t["status"] != "closed"]
     L.append("")
     if op:
-        t = op[-1]; pnl = (r15.Close - t["entry"]) * t["side"]
+        t = op[-1]; pnl = (a["live"].Close.iloc[-1] - t["entry"]) * t["side"]
         L.append(f"📌 <b>معاملهٔ باز:</b> {'BUY' if t['side'] > 0 else 'SELL'} از {f(t['entry'])} | حد ضرر {f(t['entry'] if t['tp1_hit'] else t['sl'])} | "
                  f"تارگت ۱ {f(t['tp1'])}{' ✅' if t['tp1_hit'] else ''} | تارگت ۲ {f(t['tp2'])}\n   الان {'در سود' if pnl > 0 else 'در ضرر'}: {pnl / abs(t['entry'] - t['sl']):+.2f}R")
+        try: L.append(f"   🕒 باز شده: {pd.Timestamp(t['time']).tz_convert(TZ):%Y-%m-%d %H:%M} استانبول")
+        except Exception: pass
     else: L.append("📌 معاملهٔ بازی نداریم.")
     if a["side"]: L.append(f"\n✅ <b>الان همهٔ شرط‌ها {'BUY' if a['side'] > 0 else 'SELL'} جوره</b> (سیگنال رسمی با ورود/حد ضرر از واچر میاد).")
     elif a["dir4"]: L.append(f"\n⏳ روند ۴ ساعته تأیید شده؛ منتظر ۱۵ دقیقه‌ام.")
